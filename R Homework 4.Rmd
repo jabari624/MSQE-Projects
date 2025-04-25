@@ -1,0 +1,190 @@
+---
+title: "R Homework 4"
+output: html_document
+date: "2025-02-22"
+---
+```{r}
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+install.packages("skimr")
+install.packages("tidyr")
+install.packages("dplyr")
+```
+
+```{r}
+
+library(skimr)
+
+library(tidyr)
+
+library(dplyr)
+```
+
+
+
+# 1 Titanic Passengers
+## a. Load the titanic dataset. View the column names to see if I'd like to modify the formatting or not.
+```{r}
+
+getwd()
+
+data_path <- "/Users/maduk/OneDrive/Documents/"
+
+list.files(data_path)
+titanic_df <- read.csv(paste0(data_path, "titanic passenger list.csv"))
+
+titanic_df |>
+  colnames()
+```
+
+## b. Use one of the summary functions to provide an overview of the data. Which columns do you notice have missing values?
+```{r}
+str(titanic_df)
+
+titanic_df |>
+  select(where(~ any(is.na(.)) | any(. == "", na.rm = TRUE))) |>
+  head() # Summarize count of NA/Empty values per column
+
+colunms_with_empty_val <- titanic_df |> # Shows colunms with empty/NA and the amounts.
+  summarise(across(everything(), ~ sum(is.na(.)) + sum(. == "", na.rm = TRUE ))) |>
+  select(where(~ . > 0)) |>
+  head()
+
+print(colunms_with_empty_val) #Printed Output
+
+```
+## c. What is the unit of observation in this data set? What does a row represent? Are these the same?
+```{r}
+View(titanic_df)
+# Each row represents a passenger that was aboard the Titanic. From the total number of rows we can conclude that there were 1309 passengers aboard.
+```
+
+## d. Create a column consisting of the first letter of the value in the cabin column, and call it cabin.level (we’ll ignore that multiple cabins are listed for some passengers). Put this column after the pclass column.
+```{r}
+titanic_df <- titanic_df |>
+  mutate(cabin.level = substr(cabin, 1, 1),
+         .after = pclass)
+titanic_df |>
+  head()
+
+```
+## e. What distinct combinations of pclass and cabin.level exist in the data set, ignoring missing values for both? Provide a sorted data frame with these combinations.
+```{r}
+titanic_df |>
+  drop_na(pclass, cabin.level) |>
+  distinct(pclass, cabin.level) |>
+  arrange(pclass, cabin.level)
+
+titanic_df |>
+  head()
+```
+## f. Convert the pclass column to a factor variable. Check the levels of this factor. Are they in numerical order?
+```{r}
+titanic_df <- titanic_df |>
+  arrange(pclass) |>
+  mutate(pclass = as.factor(pclass)) 
+
+print(levels(titanic_df$pclass)) # Levels are in proper numerical order.
+```
+## g. Create a new column for the age group of each passenger. The groups are:
+###       0-9: Child
+###       10-19: Teen
+###       20-29: Young Adult
+###       30-59: Adult
+###       60+: Senior
+```{r}
+titanic_df <- titanic_df |>
+  mutate(age.group = case_when(
+    age <= 9    ~ "0-9: Child",
+    age > 9 & age <= 19 ~ "10-19: Teen",
+    age > 20 & age <= 29 ~ "20-29: Young Adult",
+    age > 30 & age <= 59 ~ " 30-59: Adult",
+    age > 60 ~ "60+: Senior"
+  ), .after = age ) |>
+  head()
+
+titanic_df
+```
+## h. What percentage of passengers were in each age group?
+```{r}
+titanic_df |>
+  group_by(age.group) |>
+  summarise(count =n()) |>
+  mutate(percentage = (count / sum(count)) * 100)
+```
+## i. What was the probability of survival for each age group, excluding missing data?
+```{r}
+survival_probability <- titanic_df |>
+  drop_na(survived, age.group) |>
+  group_by(age.group) |>
+  mutate(probability = mean(survived) * 100) |>
+  ungroup()
+
+head(survival_probability)
+```
+##. j Do older age groups pay higher fares that younger age groups, on average? Create a data frame that directly demonstrates the answer, but also includes the variation of fares within each group.
+```{r}
+average_fare <- titanic_df |>
+  group_by(age.group) |>
+  summarise(mean_fare = mean(fare, na.rm = TRUE),
+            sd_fare = sd(fare, na.rm = TRUE)
+            ) |>
+  ungroup()
+
+head(average_fare)
+```
+
+## k. Do we only have boat numbers for passengers who survived? Create a data frame that directly demonstrates the answer.
+```{r}
+survived_pass <- titanic_df |>
+  mutate(has_boat_number = !is.na(boat)) |>
+  group_by(survived, has_boat_number) |>
+  summarise(count = n())
+
+print(survived_pass)
+```
+
+
+## l. In part (d), you may have noticed that lower class tickets tended to be in the lower decks. We might wonder if the fares paid reflect this. Create a data frame of the average, maximum, and minimum fares paid for each cabin level. Sort the data by average fare to make this relationship easy to see. Do higher cabin levels cost more on average?
+```{r}
+cabin_fare <- titanic_df |>
+  group_by(cabin.level) |>
+  summarise(average_fare = mean(fare, na.rm = TRUE),
+            max_fare = max(fare, na.rm = TRUE),
+            min_fare = min(fare, na.rm = TRUE)) |>
+  arrange(desc(average_fare))
+
+head(cabin_fare)
+```
+
+
+## m. Check if the zero values in the fare column might be altering your conclusion.
+```{r}
+cabin_no_zeroes <- titanic_df |>
+  filter(fare > 0) |>
+  group_by(cabin.level) |>
+  summarise(average_fare = mean(fare, na.rm = TRUE),
+            max_fare = max(fare, na.rm = TRUE),
+            min_fare = min(fare, na.rm = TRUE)) |>
+  arrange(desc(average_fare))
+
+print(cabin_no_zeroes)
+
+```
+
+
+## n. Create a new column that indicates how many standard deviations a passenger’s fare was from the mean for their pclass, using the mean() and sd() functions. As intermediate steps, create columns for the mean and standard deviation of fare for each pclass. Select just the relevant columns for this question in your final output.
+```{r}
+titanic_df <- titanic_df |>
+  group_by(pclass) |>
+  mutate(mean_fare = mean(fare, na.rm = TRUE),
+         sd_fare = sd(fare, na.rm = TRUE),
+         z_score = (fare - mean_fare) / sd_fare) |>
+  ungroup() |>
+  select(pclass, fare, mean_fare, sd_fare, z_score)
+
+print(titanic_df)
+```
+
+
+
+
